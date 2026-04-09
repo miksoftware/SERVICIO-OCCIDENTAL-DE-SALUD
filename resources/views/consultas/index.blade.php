@@ -105,10 +105,11 @@
                                     </form>
                                 @endif
                             @endif
-                            @if(in_array($c->status, ['processing', 'failed']))
-                                <form action="{{ route('consultas.retry', $c) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Reintentar toda la consulta? Se eliminarán los resultados parciales.')">
+                            @if(in_array($c->status, ['pending', 'processing', 'failed']))
+                                <a href="{{ route('consultas.show', $c) }}" class="btn btn-primary btn-sm">Ver</a>
+                                <form action="{{ route('consultas.retry', $c) }}" method="POST" style="display:inline;" onsubmit="return confirm('{{ $c->status === 'pending' ? '¿Procesar esta consulta ahora?' : '¿Reintentar toda la consulta? Se eliminarán los resultados parciales.' }}')">
                                     @csrf
-                                    <button type="submit" class="btn btn-warning btn-sm">Reintentar</button>
+                                    <button type="submit" class="btn btn-warning btn-sm">{{ $c->status === 'pending' ? 'Procesar' : 'Reintentar' }}</button>
                                 </form>
                                 @if($c->error_message)
                                     <button type="button" class="btn btn-danger btn-sm" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">Ver Error</button>

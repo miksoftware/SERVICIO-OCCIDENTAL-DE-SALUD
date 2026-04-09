@@ -68,7 +68,7 @@ class ConsultaController extends Controller
 
         $consulta = Consulta::findOrFail($request->consulta_id);
 
-        if ($consulta->user_id !== auth()->id()) {
+        if ($consulta->user_id !== auth()->id() && auth()->user()->role !== 'admin') {
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -217,8 +217,8 @@ class ConsultaController extends Controller
      */
     public function retry(Consulta $consulta)
     {
-        if (!in_array($consulta->status, ['processing', 'failed'])) {
-            return back()->with('error', 'Solo se pueden reintentar consultas en estado "processing" o "failed".');
+        if (!in_array($consulta->status, ['pending', 'processing', 'failed'])) {
+            return back()->with('error', 'Solo se pueden reintentar consultas en estado "pending", "processing" o "failed".');
         }
 
         // Delete any partial results from previous attempt

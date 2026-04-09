@@ -16,6 +16,12 @@
             @if($consulta->status === 'completed')
                 <a href="{{ route('consultas.export', $consulta) }}" class="btn btn-success btn-sm">Exportar Excel</a>
             @endif
+            @if(in_array($consulta->status, ['pending', 'processing', 'failed']))
+                <form action="{{ route('consultas.retry', $consulta) }}" method="POST" style="display:inline;" onsubmit="return confirm('{{ $consulta->status === 'pending' ? '¿Procesar esta consulta ahora?' : '¿Reintentar toda la consulta?' }}')">
+                    @csrf
+                    <button type="submit" class="btn btn-warning btn-sm">{{ $consulta->status === 'pending' ? 'Procesar ahora' : 'Reintentar' }}</button>
+                </form>
+            @endif
             <a href="{{ url()->previous() }}" class="btn btn-primary btn-sm">Volver</a>
         </div>
     </div>
@@ -92,7 +98,19 @@
 
 @if($results->isEmpty())
 <div class="glass-card">
-    <p style="color: #7777aa; font-size: 0.9rem;">No hay resultados para esta consulta.</p>
+    @if(in_array($consulta->status, ['pending', 'processing']))
+        <p style="color: #7777aa; font-size: 0.9rem;">Esta consulta aún no ha sido procesada.</p>
+        @if($consulta->cedulas && count($consulta->cedulas) > 0)
+            <p style="color: #7777aa; font-size: 0.85rem; margin-top: 0.5rem;">Cédulas a procesar ({{ count($consulta->cedulas) }}):</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem;">
+                @foreach($consulta->cedulas as $ced)
+                    <span class="badge badge-info">{{ $ced }}</span>
+                @endforeach
+            </div>
+        @endif
+    @else
+        <p style="color: #7777aa; font-size: 0.9rem;">No hay resultados para esta consulta.</p>
+    @endif
 </div>
 @endif
 @endsection
