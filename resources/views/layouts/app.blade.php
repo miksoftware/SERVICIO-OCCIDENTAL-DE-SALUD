@@ -205,6 +205,13 @@
 
         .btn-danger:hover { background: rgba(220, 53, 69, 0.4); }
 
+        .btn-warning {
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+            color: #fff;
+        }
+
+        .btn-warning:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3); }
+
         .btn-sm { padding: 0.35rem 0.8rem; font-size: 0.8rem; }
 
         /* Tables */

@@ -25,6 +25,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/consultas', [ConsultaController::class, 'index'])->name('consultas.index');
         Route::post('/consultas/upload', [ConsultaController::class, 'upload'])->name('consultas.upload');
         Route::post('/consultas/process-batch', [ConsultaController::class, 'processBatch'])->name('consultas.process-batch');
+        Route::post('/consultas/{consulta}/retry', [ConsultaController::class, 'retry'])->name('consultas.retry');
 
         Route::get('/users', [UserController::class, 'index'])->name('users.index');
         Route::post('/users', [UserController::class, 'store'])->name('users.store');

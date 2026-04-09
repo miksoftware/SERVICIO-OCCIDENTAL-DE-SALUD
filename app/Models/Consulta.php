@@ -15,6 +15,7 @@ class Consulta extends Model
         'cedulas',
         'processed',
         'status',
+        'error_message',
     ];
 
     protected $casts = [

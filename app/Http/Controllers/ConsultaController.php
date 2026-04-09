@@ -87,7 +87,7 @@ class ConsultaController extends Controller
         }
 
         // Mark as processing immediately
-        $consulta->update(['status' => 'processing', 'processed' => 0]);
+        $consulta->update(['status' => 'processing', 'processed' => 0, 'error_message' => null]);
 
         // Release session lock so browser isn't blocked
         session()->save();
@@ -99,50 +99,76 @@ class ConsultaController extends Controller
             // Disable output buffering for SSE
             if (ob_get_level()) ob_end_clean();
 
-            // === SINGLE SOSService instance for ALL cedulas ===
-            // This means ONE login, ONE session, ONE cookie jar for the entire batch
-            $sosService = new SOSService();
-            \Log::channel('sos')->info("SOS BATCH: Iniciando lote de " . count($cedulas) . " cédulas con UNA sola sesión");
-
-            foreach ($cedulas as $index => $cedula) {
-                $data = $sosService->consultarCedula($cedula);
-
-                // Save result
-                $resultData = array_merge(
-                    ['consulta_id' => $consulta->id, 'cedula' => $cedula],
-                    $this->sanitizeResultData($data)
-                );
-                $result = ConsultaResult::create($resultData);
-
-                // Update progress
-                $processed = $index + 1;
-                $isLast = ($processed >= count($cedulas));
-
-                $consulta->update([
-                    'processed' => $processed,
-                    'status'    => $isLast ? 'completed' : 'processing',
-                ]);
-
-                // Send SSE event with event ID for tracking
-                $eventData = json_encode([
-                    'success'   => !isset($data['error']),
-                    'result'    => $result,
-                    'processed' => $processed,
-                    'total'     => count($cedulas),
-                ]);
-
-                echo "id: {$processed}\ndata: {$eventData}\n\n";
-
-                if (connection_aborted()) {
-                    \Log::channel('sos')->info("SOS BATCH: Conexión abortada en cédula {$processed}/" . count($cedulas));
-                    break;
-                }
+            try {
+                // === SINGLE SOSService instance for ALL cedulas ===
+                $sosService = new SOSService();
+                \Log::channel('sos')->info("SOS BATCH: Iniciando lote de " . count($cedulas) . " cédulas con UNA sola sesión");
+            } catch (\Throwable $e) {
+                $errorMsg = 'Error al iniciar sesión SOS: ' . $e->getMessage();
+                \Log::channel('sos')->error("SOS BATCH: {$errorMsg}", ['exception' => $e->getTraceAsString()]);
+                $consulta->update(['status' => 'failed', 'error_message' => $errorMsg]);
+                echo "event: error\ndata: " . json_encode(['error' => $errorMsg]) . "\n\n";
                 flush();
+                return;
             }
 
-            \Log::channel('sos')->info("SOS BATCH: Lote completado - " . count($cedulas) . " cédulas procesadas con UNA sesión");
-            echo "event: done\ndata: {}\n\n";
-            flush();
+            try {
+                foreach ($cedulas as $index => $cedula) {
+                    try {
+                        $data = $sosService->consultarCedula($cedula);
+                    } catch (\Throwable $e) {
+                        $data = ['error' => 'Excepción: ' . $e->getMessage()];
+                        \Log::channel('sos')->error("SOS BATCH: Error en cédula {$cedula}: {$e->getMessage()}");
+                    }
+
+                    // Save result
+                    $resultData = array_merge(
+                        ['consulta_id' => $consulta->id, 'cedula' => $cedula],
+                        $this->sanitizeResultData($data)
+                    );
+                    $result = ConsultaResult::create($resultData);
+
+                    // Update progress
+                    $processed = $index + 1;
+                    $isLast = ($processed >= count($cedulas));
+
+                    $consulta->update([
+                        'processed' => $processed,
+                        'status'    => $isLast ? 'completed' : 'processing',
+                    ]);
+
+                    // Send SSE event with event ID for tracking
+                    $eventData = json_encode([
+                        'success'   => !isset($data['error']),
+                        'result'    => $result,
+                        'processed' => $processed,
+                        'total'     => count($cedulas),
+                    ]);
+
+                    echo "id: {$processed}\ndata: {$eventData}\n\n";
+
+                    if (connection_aborted()) {
+                        \Log::channel('sos')->info("SOS BATCH: Conexión abortada en cédula {$processed}/" . count($cedulas));
+                        break;
+                    }
+                    flush();
+                }
+
+                \Log::channel('sos')->info("SOS BATCH: Lote completado - " . count($cedulas) . " cédulas procesadas con UNA sesión");
+                echo "event: done\ndata: {}\n\n";
+                flush();
+
+            } catch (\Throwable $e) {
+                $errorMsg = 'Error fatal durante procesamiento: ' . $e->getMessage();
+                \Log::channel('sos')->error("SOS BATCH: {$errorMsg}", [
+                    'exception' => $e->getTraceAsString(),
+                    'consulta_id' => $consulta->id,
+                    'processed' => $consulta->processed,
+                ]);
+                $consulta->update(['status' => 'failed', 'error_message' => $errorMsg]);
+                echo "event: error\ndata: " . json_encode(['error' => $errorMsg]) . "\n\n";
+                flush();
+            }
         }, 200, [
             'Content-Type'      => 'text/event-stream',
             'Cache-Control'     => 'no-cache',
@@ -184,6 +210,32 @@ class ConsultaController extends Controller
     {
         $results = $consulta->results()->orderBy('cedula')->get();
         return view('consultas.show', compact('consulta', 'results'));
+    }
+
+    /**
+     * Reset a stuck/failed consulta so it can be retried.
+     * Deletes previous partial results and resets status to pending.
+     */
+    public function retry(Consulta $consulta)
+    {
+        if (!in_array($consulta->status, ['processing', 'failed'])) {
+            return back()->with('error', 'Solo se pueden reintentar consultas en estado "processing" o "failed".');
+        }
+
+        // Delete any partial results from previous attempt
+        $consulta->results()->delete();
+
+        // Reset to pending
+        $consulta->update([
+            'status' => 'pending',
+            'processed' => 0,
+            'error_message' => null,
+        ]);
+
+        \Log::channel('sos')->info("SOS RETRY: Consulta #{$consulta->id} reiniciada por usuario " . auth()->id());
+
+        return redirect()->route('consultas.index')
+            ->with('success', "Consulta #{$consulta->id} reiniciada. Puede procesarla nuevamente.");
     }
 
     private function sanitizeResultData(array $data): array

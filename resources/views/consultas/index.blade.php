@@ -4,6 +4,18 @@
 @section('content')
 <div class="glass-card">
     <h2>Procesar Consultas Masivas</h2>
+
+    @if(session('success'))
+        <div style="background: rgba(105, 240, 174, 0.15); border: 1px solid #69f0ae; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #69f0ae; font-size: 0.9rem;">
+            {{ session('success') }}
+        </div>
+    @endif
+    @if(session('error'))
+        <div style="background: rgba(255, 107, 122, 0.15); border: 1px solid #ff6b7a; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #ff6b7a; font-size: 0.9rem;">
+            {{ session('error') }}
+        </div>
+    @endif
+
     <p style="color: #7777aa; font-size: 0.85rem; margin-bottom: 1.5rem;">
         Suba un archivo Excel o CSV con cédulas para consultar en el portal SOS. La primera columna o una columna llamada "cedula" será utilizada.
     </p>
@@ -77,7 +89,7 @@
                         <td>{{ $c->total_cedulas }}</td>
                         <td>{{ $c->processed }}</td>
                         <td>
-                            <span class="badge {{ $c->status === 'completed' ? 'badge-success' : ($c->status === 'processing' ? 'badge-warning' : 'badge-info') }}">
+                            <span class="badge {{ $c->status === 'completed' ? 'badge-success' : ($c->status === 'failed' ? 'badge-danger' : ($c->status === 'processing' ? 'badge-warning' : 'badge-info')) }}">
                                 {{ $c->status }}
                             </span>
                         </td>
@@ -86,6 +98,19 @@
                             @if($c->status === 'completed')
                                 <a href="{{ route('consultas.show', $c) }}" class="btn btn-primary btn-sm">Ver</a>
                                 <a href="{{ route('consultas.export', $c) }}" class="btn btn-success btn-sm">Excel</a>
+                            @endif
+                            @if(in_array($c->status, ['processing', 'failed']))
+                                <form action="{{ route('consultas.retry', $c) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Reintentar esta consulta? Se eliminarán los resultados parciales anteriores.')">
+                                    @csrf
+                                    <button type="submit" class="btn btn-warning btn-sm">Reintentar</button>
+                                </form>
+                                @if($c->error_message)
+                                    <button type="button" class="btn btn-danger btn-sm" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">Ver Error</button>
+                                    <div style="display:none; position:absolute; z-index:50; background:rgba(20,20,50,0.95); border:1px solid #ff6b7a; border-radius:8px; padding:0.8rem; max-width:400px; font-size:0.8rem; color:#ff6b7a; margin-top:0.3rem; word-break:break-word;">
+                                        {{ $c->error_message }}
+                                        <button type="button" onclick="this.parentElement.style.display='none'" style="display:block; margin-top:0.5rem; background:none; border:1px solid #ff6b7a; color:#ff6b7a; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:0.75rem;">Cerrar</button>
+                                    </div>
+                                @endif
                             @endif
                         </td>
                     </tr>
@@ -214,6 +239,16 @@ function processBatch() {
                         const jsonStr = line.substring(6);
                         if (eventType === 'done') {
                             finishBatch();
+                            return;
+                        }
+                        if (eventType === 'error') {
+                            try {
+                                const errData = JSON.parse(jsonStr);
+                                document.getElementById('upload-status').innerHTML = `<span style="color:#ff6b7a;">Error: ${errData.error}</span>`;
+                            } catch(e) {
+                                document.getElementById('upload-status').innerHTML = '<span style="color:#ff6b7a;">Error desconocido en el servidor</span>';
+                            }
+                            btnUpload.disabled = false;
                             return;
                         }
                         try {
