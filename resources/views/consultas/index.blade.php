@@ -94,19 +94,25 @@
                             </span>
                         </td>
                         <td>{{ $c->created_at->format('Y-m-d H:i') }}</td>
-                        <td style="display: flex; gap: 0.3rem;">
+                        <td style="display: flex; gap: 0.3rem; flex-wrap: wrap; position: relative;">
                             @if($c->status === 'completed')
                                 <a href="{{ route('consultas.show', $c) }}" class="btn btn-primary btn-sm">Ver</a>
                                 <a href="{{ route('consultas.export', $c) }}" class="btn btn-success btn-sm">Excel</a>
+                                @if($c->results()->whereNotNull('error')->exists())
+                                    <form action="{{ route('consultas.retry-failed', $c) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Reintentar solo las cédulas con error?')">
+                                        @csrf
+                                        <button type="submit" class="btn btn-warning btn-sm">Reintentar fallidas</button>
+                                    </form>
+                                @endif
                             @endif
                             @if(in_array($c->status, ['processing', 'failed']))
-                                <form action="{{ route('consultas.retry', $c) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Reintentar esta consulta? Se eliminarán los resultados parciales anteriores.')">
+                                <form action="{{ route('consultas.retry', $c) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Reintentar toda la consulta? Se eliminarán los resultados parciales.')">
                                     @csrf
                                     <button type="submit" class="btn btn-warning btn-sm">Reintentar</button>
                                 </form>
                                 @if($c->error_message)
                                     <button type="button" class="btn btn-danger btn-sm" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">Ver Error</button>
-                                    <div style="display:none; position:absolute; z-index:50; background:rgba(20,20,50,0.95); border:1px solid #ff6b7a; border-radius:8px; padding:0.8rem; max-width:400px; font-size:0.8rem; color:#ff6b7a; margin-top:0.3rem; word-break:break-word;">
+                                    <div style="display:none; position:absolute; z-index:50; background:rgba(20,20,50,0.95); border:1px solid #ff6b7a; border-radius:8px; padding:0.8rem; max-width:400px; font-size:0.8rem; color:#ff6b7a; margin-top:0.3rem; word-break:break-word; right:0; top:100%;">
                                         {{ $c->error_message }}
                                         <button type="button" onclick="this.parentElement.style.display='none'" style="display:block; margin-top:0.5rem; background:none; border:1px solid #ff6b7a; color:#ff6b7a; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:0.75rem;">Cerrar</button>
                                     </div>
@@ -128,6 +134,7 @@ let cedulasList = [];
 let currentIndex = 0;
 let successCount = 0;
 let errorCount = 0;
+let totalToProcess = 0;
 
 // File upload drag & drop
 const dropZone = document.getElementById('drop-zone');
@@ -253,6 +260,9 @@ function processBatch() {
                         }
                         try {
                             const data = JSON.parse(jsonStr);
+                            if (data.total && !totalToProcess) {
+                                totalToProcess = data.total;
+                            }
                             if (data.success) {
                                 successCount++;
                                 appendResult(data.result, false);
@@ -272,10 +282,11 @@ function processBatch() {
                 read();
             }).catch(err => {
                 console.error('Stream read error:', err);
-                if (currentIndex >= cedulasList.length) {
+                const total = totalToProcess || cedulasList.length;
+                if (currentIndex >= total) {
                     finishBatch();
                 } else {
-                    document.getElementById('upload-status').textContent = `Error de conexión. Se procesaron ${currentIndex} de ${cedulasList.length} cédulas.`;
+                    document.getElementById('upload-status').textContent = `Error de conexión. Se procesaron ${currentIndex} de ${total} cédulas.`;
                     btnUpload.disabled = false;
                 }
             });
@@ -297,10 +308,11 @@ function finishBatch() {
 }
 
 function updateProgress() {
-    const pct = Math.round((currentIndex / cedulasList.length) * 100);
+    const total = totalToProcess || cedulasList.length;
+    const pct = total > 0 ? Math.round((currentIndex / total) * 100) : 0;
     document.getElementById('progress-bar').style.width = pct + '%';
     document.getElementById('progress-bar').textContent = pct + '%';
-    document.getElementById('progress-text').textContent = `${currentIndex} / ${cedulasList.length}`;
+    document.getElementById('progress-text').textContent = `${currentIndex} / ${total}`;
     document.getElementById('count-success').textContent = successCount;
     document.getElementById('count-errors').textContent = errorCount;
 }
@@ -338,5 +350,33 @@ function appendResult(r, isError) {
 
     container.prepend(div);
 }
+
+// Auto-retry: if redirected with auto_retry param, start processing automatically
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const autoRetryId = params.get('auto_retry');
+    if (!autoRetryId) return;
+
+    // Clean URL without reloading
+    window.history.replaceState({}, '', window.location.pathname);
+
+    consultaId = parseInt(autoRetryId);
+    currentIndex = 0;
+    successCount = 0;
+    errorCount = 0;
+
+    // Show progress UI
+    document.getElementById('upload-status').textContent = 'Reintentando consulta #' + consultaId + '...';
+    document.getElementById('progress-section').style.display = 'block';
+    document.getElementById('results-section').style.display = 'block';
+    document.getElementById('results-container').innerHTML = '';
+    btnUpload.disabled = true;
+
+    // We don't know cedulasList length yet, the SSE will tell us via total
+    totalToProcess = 0;
+    document.getElementById('progress-text').textContent = 'Iniciando...';
+
+    processBatch();
+})();
 </script>
 @endsection

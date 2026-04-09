@@ -213,8 +213,7 @@ class ConsultaController extends Controller
     }
 
     /**
-     * Reset a stuck/failed consulta so it can be retried.
-     * Deletes previous partial results and resets status to pending.
+     * Reset a stuck/failed consulta and redirect to auto-process it.
      */
     public function retry(Consulta $consulta)
     {
@@ -234,8 +233,46 @@ class ConsultaController extends Controller
 
         \Log::channel('sos')->info("SOS RETRY: Consulta #{$consulta->id} reiniciada por usuario " . auth()->id());
 
-        return redirect()->route('consultas.index')
-            ->with('success', "Consulta #{$consulta->id} reiniciada. Puede procesarla nuevamente.");
+        // Redirect to index with auto_retry param so JS auto-starts processing
+        return redirect()->route('consultas.index', ['auto_retry' => $consulta->id]);
+    }
+
+    /**
+     * Retry only the failed cédulas from a completed consulta.
+     */
+    public function retryFailed(Consulta $consulta)
+    {
+        if ($consulta->status !== 'completed') {
+            return back()->with('error', 'Solo se pueden reintentar cédulas fallidas de consultas completadas.');
+        }
+
+        // Get cédulas that had errors
+        $failedCedulas = $consulta->results()
+            ->whereNotNull('error')
+            ->pluck('cedula')
+            ->unique()
+            ->values()
+            ->toArray();
+
+        if (empty($failedCedulas)) {
+            return back()->with('error', 'No hay cédulas con error para reintentar.');
+        }
+
+        // Delete only the failed results
+        $consulta->results()->whereNotNull('error')->delete();
+
+        // Update consulta to retry only failed cédulas
+        $consulta->update([
+            'status' => 'pending',
+            'cedulas' => $failedCedulas,
+            'total_cedulas' => count($failedCedulas),
+            'processed' => 0,
+            'error_message' => null,
+        ]);
+
+        \Log::channel('sos')->info("SOS RETRY-FAILED: Consulta #{$consulta->id} reintentando " . count($failedCedulas) . " cédulas fallidas");
+
+        return redirect()->route('consultas.index', ['auto_retry' => $consulta->id]);
     }
 
     private function sanitizeResultData(array $data): array
