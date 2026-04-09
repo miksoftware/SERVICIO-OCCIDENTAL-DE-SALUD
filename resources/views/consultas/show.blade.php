@@ -16,7 +16,7 @@
             @if($consulta->status === 'completed')
                 <a href="{{ route('consultas.export', $consulta) }}" class="btn btn-success btn-sm">Exportar Excel</a>
             @endif
-            @if(in_array($consulta->status, ['pending', 'processing', 'failed']))
+            @if(auth()->user()->role === 'admin' && in_array($consulta->status, ['pending', 'processing', 'failed']))
                 <form action="{{ route('consultas.retry', $consulta) }}" method="POST" style="display:inline;" onsubmit="return confirm('{{ $consulta->status === 'pending' ? '¿Procesar esta consulta ahora?' : '¿Reintentar toda la consulta?' }}')">
                     @csrf
                     <button type="submit" class="btn btn-warning btn-sm">{{ $consulta->status === 'pending' ? 'Procesar ahora' : 'Reintentar' }}</button>
