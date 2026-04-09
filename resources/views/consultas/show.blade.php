@@ -26,18 +26,21 @@
         </div>
     </div>
 
-    <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
-        <span style="font-size: 0.85rem;">
-            <span style="color: #69f0ae;">●</span> Exitosas: <strong>{{ $results->whereNull('error')->count() }}</strong>
-        </span>
-        <span style="font-size: 0.85rem;">
-            <span style="color: #ff6b7a;">●</span> Errores: <strong>{{ $results->whereNotNull('error')->count() }}</strong>
-        </span>
+    <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+        <button type="button" class="btn btn-sm filter-btn active" data-filter="all" style="font-size: 0.82rem; padding: 0.25rem 0.7rem; border: 1px solid #7777aa; background: rgba(119,119,170,0.15); color: #ccc; cursor: pointer; border-radius: 6px;">
+            Todas: <strong>{{ $results->count() }}</strong>
+        </button>
+        <button type="button" class="btn btn-sm filter-btn" data-filter="success" style="font-size: 0.82rem; padding: 0.25rem 0.7rem; border: 1px solid #69f0ae; background: transparent; color: #69f0ae; cursor: pointer; border-radius: 6px;">
+            ● Exitosas: <strong>{{ $results->whereNull('error')->count() }}</strong>
+        </button>
+        <button type="button" class="btn btn-sm filter-btn" data-filter="error" style="font-size: 0.82rem; padding: 0.25rem 0.7rem; border: 1px solid #ff6b7a; background: transparent; color: #ff6b7a; cursor: pointer; border-radius: 6px;">
+            ● Errores: <strong>{{ $results->whereNotNull('error')->count() }}</strong>
+        </button>
     </div>
 </div>
 
 @foreach($results as $r)
-<div class="glass-card" style="padding: 1rem 1.5rem;">
+<div class="glass-card result-card" data-type="{{ $r->error ? 'error' : 'success' }}" style="padding: 1rem 1.5rem;">
     @if($r->error)
         <div class="result-header">
             <span class="cedula-label">{{ $r->cedula }}</span>
@@ -113,4 +116,27 @@
     @endif
 </div>
 @endif
+
+<script>
+document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const filter = this.dataset.filter;
+        document.querySelectorAll('.filter-btn').forEach(b => {
+            b.classList.remove('active');
+            b.style.background = 'transparent';
+        });
+        this.classList.add('active');
+        this.style.background = filter === 'all' ? 'rgba(119,119,170,0.15)' :
+            filter === 'success' ? 'rgba(105,240,174,0.15)' : 'rgba(255,107,122,0.15)';
+
+        document.querySelectorAll('.result-card').forEach(card => {
+            if (filter === 'all' || card.dataset.type === filter) {
+                card.style.display = '';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    });
+});
+</script>
 @endsection
