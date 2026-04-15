@@ -14,10 +14,14 @@ class ConsultaController extends Controller
 {
     public function index()
     {
-        $consultas = Consulta::where('user_id', auth()->id())
-            ->orderByDesc('created_at')
-            ->take(20)
-            ->get();
+        $query = Consulta::orderByDesc('created_at');
+
+        // Admins ven todas las consultas, usuarios normales solo las suyas
+        if (auth()->user()->role !== 'admin') {
+            $query->where('user_id', auth()->id());
+        }
+
+        $consultas = $query->take(20)->get();
 
         return view('consultas.index', compact('consultas'));
     }

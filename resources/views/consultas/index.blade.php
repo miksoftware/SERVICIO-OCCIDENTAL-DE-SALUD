@@ -98,7 +98,7 @@
                             @if($c->status === 'completed')
                                 <a href="{{ route('consultas.show', $c) }}" class="btn btn-primary btn-sm">Ver</a>
                                 <a href="{{ route('consultas.export', $c) }}" class="btn btn-success btn-sm">Excel</a>
-                                @if($c->results()->whereNotNull('error')->exists())
+                                @if(auth()->user()->role === 'admin' && $c->results()->whereNotNull('error')->exists())
                                     <form action="{{ route('consultas.retry-failed', $c) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Reintentar solo las cédulas con error?')">
                                         @csrf
                                         <button type="submit" class="btn btn-warning btn-sm">Reintentar fallidas</button>
@@ -107,10 +107,12 @@
                             @endif
                             @if(in_array($c->status, ['pending', 'processing', 'failed']))
                                 <a href="{{ route('consultas.show', $c) }}" class="btn btn-primary btn-sm">Ver</a>
+                                @if(auth()->user()->role === 'admin')
                                 <form action="{{ route('consultas.retry', $c) }}" method="POST" style="display:inline;" onsubmit="return confirm('{{ $c->status === 'pending' ? '¿Procesar esta consulta ahora?' : '¿Reintentar toda la consulta? Se eliminarán los resultados parciales.' }}')">
                                     @csrf
                                     <button type="submit" class="btn btn-warning btn-sm">{{ $c->status === 'pending' ? 'Procesar' : 'Reintentar' }}</button>
                                 </form>
+                                @endif
                                 @if($c->error_message)
                                     <button type="button" class="btn btn-danger btn-sm" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">Ver Error</button>
                                     <div style="display:none; position:absolute; z-index:50; background:rgba(20,20,50,0.95); border:1px solid #ff6b7a; border-radius:8px; padding:0.8rem; max-width:400px; font-size:0.8rem; color:#ff6b7a; margin-top:0.3rem; word-break:break-word; right:0; top:100%;">
