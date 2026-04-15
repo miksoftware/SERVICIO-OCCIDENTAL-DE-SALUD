@@ -286,7 +286,9 @@ class ConsultaController extends Controller
             'semanas_pos_anterior', 'semanas_pac_sos', 'semanas_pac_anterior',
             'estado', 'derecho', 'paga_cuota_moderadora', 'paga_copago',
             'empleador_tipo_id', 'empleador_numero_id', 'empleador_razon_social',
-            'convenios', 'error',
+            'estado_civil', 'telefono', 'direccion', 'barrio',
+            'ciudad_residencia', 'departamento', 'semanas_cotizadas', 'afp',
+            'error',
         ];
 
         $sanitized = [];

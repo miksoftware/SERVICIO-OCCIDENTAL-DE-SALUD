@@ -84,15 +84,19 @@
         </div>
         @endif
 
-        @if($r->convenios && count($r->convenios) > 0)
+        @if($r->estado_civil || $r->direccion || $r->ciudad_residencia || $r->departamento || $r->afp)
         <div style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid rgba(255,255,255,0.06);">
-            <h3 style="font-size: 0.9rem; color: #7777aa; margin-bottom: 0.4rem;">Convenios de Capitación</h3>
-            @foreach($r->convenios as $conv)
-                <div class="field" style="margin-bottom: 0.3rem;">
-                    <span class="badge badge-info" style="margin-right: 0.5rem;">{{ $conv['estado'] ?? '' }}</span>
-                    <span class="field-value">{{ $conv['convenio'] ?? '' }}</span>
-                </div>
-            @endforeach
+            <h3 style="font-size: 0.9rem; color: #7777aa; margin-bottom: 0.4rem;">Información Adicional</h3>
+            <div class="result-grid">
+                <div class="field"><span class="field-label">Estado Civil: </span><span class="field-value">{{ $r->estado_civil ?? '-' }}</span></div>
+                <div class="field"><span class="field-label">Teléfono: </span><span class="field-value">{{ $r->telefono ?? '-' }}</span></div>
+                <div class="field"><span class="field-label">Dirección: </span><span class="field-value">{{ $r->direccion ?? '-' }}</span></div>
+                <div class="field"><span class="field-label">Barrio: </span><span class="field-value">{{ $r->barrio ?? '-' }}</span></div>
+                <div class="field"><span class="field-label">Ciudad de Residencia: </span><span class="field-value">{{ $r->ciudad_residencia ?? '-' }}</span></div>
+                <div class="field"><span class="field-label">Departamento: </span><span class="field-value">{{ $r->departamento ?? '-' }}</span></div>
+                <div class="field"><span class="field-label">Semanas Cotizadas: </span><span class="field-value">{{ $r->semanas_cotizadas ?? '-' }}</span></div>
+                <div class="field"><span class="field-label">AFP: </span><span class="field-value">{{ $r->afp ?? '-' }}</span></div>
+            </div>
         </div>
         @endif
     @endif

@@ -255,10 +255,23 @@ class SOSService
             // Update cached consulta page and ViewState for next cedula
             // After a successful query, we need to click "Nueva Consulta" to reset the form
             $newViewState = $this->extractViewState($responseHtml);
+
+            // 3. Parse basic results first
+            $result = $this->parseConsultaResponse($responseHtml, $cedula);
+
+            // 4. Fetch "Información Adicional" via AJAX (before Nueva Consulta resets the form)
+            if (!isset($result['error'])) {
+                $infoAdicional = $this->fetchInfoAdicional($responseHtml, $cedula);
+                if (!empty($infoAdicional)) {
+                    $result = array_merge($result, $infoAdicional);
+                    Log::channel('sos')->info("SOS: Info Adicional obtenida para {$cedula}:", $infoAdicional);
+                }
+            }
+
+            // 5. Submit "Nueva Consulta" to reset the form for the next cedula
             if (!empty($newViewState)) {
                 $this->viewState = $newViewState;
 
-                // Submit "Nueva Consulta" to get a fresh empty form for the next cedula
                 $nuevaConsultaHtml = $this->submitNuevaConsulta($responseHtml);
                 if ($nuevaConsultaHtml && $this->isConsultaPage($nuevaConsultaHtml)) {
                     $this->consultaPageHtml = $nuevaConsultaHtml;
@@ -269,9 +282,6 @@ class SOSService
                     Log::channel('sos')->warning("SOS: Nueva Consulta falló, se re-navegará en la próxima consulta");
                 }
             }
-
-            // 3. Parse results
-            $result = $this->parseConsultaResponse($responseHtml, $cedula);
 
             Log::channel('sos')->info("SOS: Resultado parseado para {$cedula}:", $result);
 
@@ -862,8 +872,8 @@ class SOSService
         // Empleadores
         $this->parseEmpleadores($html, $result);
 
-        // Convenios
-        $result['convenios'] = $this->parseConvenios($html);
+        // Convenios: omitidos — datos no relevantes
+        // $result['convenios'] = $this->parseConvenios($html);
 
         return $result;
     }
@@ -990,6 +1000,173 @@ class SOSService
                 }
             }
         }
+    }
+
+    /**
+     * Request "Información Adicional" via A4J AJAX and return parsed data.
+     * This simulates clicking the "Información Adicional" button on the results page.
+     */
+    private function fetchInfoAdicional(string $responseHtml, string $cedula): array
+    {
+        try {
+            // Find the "Información Adicional" button (class="adicionar")
+            $buttonName = null;
+            if (preg_match('/<input[^>]*class="adicionar"[^>]*name="([^"]*)"[^>]*/i', $responseHtml, $m)) {
+                $buttonName = $m[1];
+            } elseif (preg_match('/<input[^>]*name="([^"]*)"[^>]*value="Informaci[^"]*Adicional"[^>]*/i', $responseHtml, $m)) {
+                $buttonName = $m[1];
+            }
+
+            if (!$buttonName) {
+                Log::channel('sos')->warning("SOS: No se encontró botón Información Adicional para {$cedula}");
+                return [];
+            }
+
+            $viewState = $this->extractViewState($responseHtml);
+
+            // Build AJAX form data matching the browser's payload
+            $formData = [
+                'AJAXREQUEST'           => '_viewRoot',
+                'afiliadoForm'          => 'afiliadoForm',
+                'javax.faces.ViewState' => $viewState,
+                $buttonName             => $buttonName,
+            ];
+
+            // Add current form field values (the portal expects them)
+            $formData['afiliadoForm:fechaConsultaInputDate'] = now()->format('Y/m/d');
+            $formData['afiliadoForm:fechaConsultaInputCurrentDate'] = now()->format('m/Y');
+            $formData['afiliadoForm:tipoId'] = $this->extractSelectedOptionValue($responseHtml, 'afiliadoForm:tipoId') ?? '1';
+            $formData['afiliadoForm:numeroId'] = $cedula;
+            $formData['afiliadoForm:plan'] = '1';
+
+            // Add name fields from the response
+            $formData['afiliadoForm:prNombre'] = $this->extractInputValue($responseHtml, 'afiliadoForm:prNombre') ?? '';
+            $formData['afiliadoForm:sgNombre'] = $this->extractInputValue($responseHtml, 'afiliadoForm:sgNombre') ?? '';
+            $formData['afiliadoForm:prApellido'] = $this->extractInputValue($responseHtml, 'afiliadoForm:prApellido') ?? '';
+            $formData['afiliadoForm:sgApellido'] = $this->extractInputValue($responseHtml, 'afiliadoForm:sgApellido') ?? '';
+
+            // Add the textarea (observaciones)
+            $formData['afiliadoForm:j_id183'] = '';
+
+            // Add hidden inputs from the response page
+            $this->addHiddenInputs($responseHtml, $formData, 'afiliadoForm');
+
+            Log::channel('sos')->info("SOS: POST Información Adicional para {$cedula}", ['button' => $buttonName]);
+
+            $response = $this->client->post(config('sos.consulta_url'), [
+                'form_params' => $formData,
+                'headers' => [
+                    'Content-Type'     => 'application/x-www-form-urlencoded',
+                    'Referer'          => config('sos.consulta_url'),
+                    'Faces-Request'    => 'partial/ajax',
+                    'X-Requested-With' => 'XMLHttpRequest',
+                ],
+                'http_errors' => false,
+            ]);
+
+            $ajaxHtml = (string) $response->getBody();
+            Log::channel('sos')->info("SOS: Info Adicional response para {$cedula} - Status: {$response->getStatusCode()}, Size: " . strlen($ajaxHtml));
+            $this->saveHtmlLog("08_info_adicional_{$cedula}", $ajaxHtml, [
+                'cedula'      => $cedula,
+                'status_code' => $response->getStatusCode(),
+            ]);
+
+            return $this->parseInfoAdicional($ajaxHtml);
+        } catch (\Exception $e) {
+            Log::channel('sos')->error("SOS: Error obteniendo Info Adicional para {$cedula}: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Parse the "Información Adicional" from the AJAX response or full page HTML.
+     * The data is inside the modal panel: informacionAdicionalPopupMessages:j_id330_body
+     */
+    private function parseInfoAdicional(string $html): array
+    {
+        $info = [];
+
+        // The AJAX response may contain a CDATA section with the updated HTML
+        // or it may be the full page. Either way, we look for the modal content.
+
+        // Extract Estado Civil
+        $info['estado_civil'] = $this->extractInfoAdicionalField($html, 'Estado Civil');
+
+        // Extract Teléfono
+        $info['telefono'] = $this->extractInfoAdicionalField($html, 'fono'); // Telé is encoded
+
+        // Extract Dirección
+        $info['direccion'] = $this->extractInfoAdicionalField($html, 'Direcci');
+
+        // Extract Barrio
+        $info['barrio'] = $this->extractInfoAdicionalField($html, 'Barrio');
+
+        // Extract Ciudad de Residencia (has composite format: Código: X Descripción: Y)
+        $info['ciudad_residencia'] = $this->extractInfoAdicionalCompositeField($html, 'Ciudad de Residencia');
+
+        // Extract Departamento
+        $info['departamento'] = $this->extractInfoAdicionalField($html, 'Departamento');
+
+        // Extract Semanas Cotizadas
+        $semanas = $this->extractInfoAdicionalField($html, 'Semanas Cotizadas');
+        $info['semanas_cotizadas'] = ($semanas !== null && is_numeric(trim($semanas))) ? (int) trim($semanas) : null;
+
+        // Extract AFP (composite format: Código: X Descripción: Y)
+        $info['afp'] = $this->extractInfoAdicionalCompositeField($html, 'AFP');
+
+        // Remove null values
+        return array_filter($info, fn($v) => $v !== null && $v !== '');
+    }
+
+    /**
+     * Extract a simple field value from the Información Adicional modal.
+     * Pattern: <label>Label</label></td><td><span style="font-weight:bold">VALUE</span></td>
+     */
+    private function extractInfoAdicionalField(string $html, string $labelText): ?string
+    {
+        $escaped = preg_quote($labelText, '/');
+        // Match label followed by td with bold span value
+        if (preg_match('/<label[^>]*>\s*[^<]*' . $escaped . '[^<]*<\/label>\s*<\/td>\s*<td[^>]*>\s*<span[^>]*>([^<]*)<\/span>/is', $html, $m)) {
+            $val = trim(html_entity_decode($m[1], ENT_QUOTES, 'UTF-8'));
+            return $val !== '' ? $val : null;
+        }
+        return null;
+    }
+
+    /**
+     * Extract a composite field (Código + Descripción) from the Información Adicional modal.
+     * Pattern: <td><span>Código: </span><span>1622 </span><span>Descripción: </span><span>CORINTO</span></td>
+     */
+    private function extractInfoAdicionalCompositeField(string $html, string $labelText): ?string
+    {
+        $escaped = preg_quote($labelText, '/');
+        // Find the label, then capture all spans in the next td
+        if (preg_match('/<label[^>]*>\s*[^<]*' . $escaped . '[^<]*<\/label>\s*<\/td>\s*<td[^>]*>(.*?)<\/td>/is', $html, $m)) {
+            $tdContent = $m[1];
+            // Extract all span text values
+            preg_match_all('/<span[^>]*>([^<]*)<\/span>/i', $tdContent, $spans);
+            if (!empty($spans[1])) {
+                $combined = implode('', array_map('trim', $spans[1]));
+                $combined = trim(html_entity_decode($combined, ENT_QUOTES, 'UTF-8'));
+                // Clean up: "Código: 1622 Descripción: CORINTO" → keep as-is for full context
+                return $combined !== '' && $combined !== 'Código: Descripción:' && $combined !== 'Código: 0 Descripción:' ? $combined : null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Extract the selected option's value attribute from a select element.
+     */
+    private function extractSelectedOptionValue(string $html, string $fieldName): ?string
+    {
+        $escaped = preg_quote($fieldName, '/');
+        if (preg_match('/<select[^>]*(?:id|name)="' . $escaped . '"[^>]*>(.*?)<\/select>/is', $html, $selectMatch)) {
+            if (preg_match('/<option[^>]*selected[^>]*value="([^"]*)"[^>]*>/i', $selectMatch[1], $optMatch)) {
+                return $optMatch[1];
+            }
+        }
+        return null;
     }
 
     private function parseConvenios(string $html): ?array

@@ -51,22 +51,20 @@ class ResultsExport implements FromQuery, WithHeadings, WithMapping, WithStyles,
             'Empleador Tipo ID',
             'Empleador NIT',
             'Empleador Razón Social',
-            'Convenios',
+            'Estado Civil',
+            'Teléfono',
+            'Dirección',
+            'Barrio',
+            'Ciudad de Residencia',
+            'Departamento',
+            'Semanas Cotizadas',
+            'AFP',
             'Error',
         ];
     }
 
     public function map($row): array
     {
-        $conveniosText = '';
-        if ($row->convenios) {
-            $parts = [];
-            foreach ($row->convenios as $c) {
-                $parts[] = ($c['estado'] ?? '') . ': ' . ($c['convenio'] ?? '');
-            }
-            $conveniosText = implode(' | ', $parts);
-        }
-
         return [
             $row->cedula,
             $row->tipo_id,
@@ -97,7 +95,14 @@ class ResultsExport implements FromQuery, WithHeadings, WithMapping, WithStyles,
             $row->empleador_tipo_id,
             $row->empleador_numero_id,
             $row->empleador_razon_social,
-            $conveniosText,
+            $row->estado_civil,
+            $row->telefono,
+            $row->direccion,
+            $row->barrio,
+            $row->ciudad_residencia,
+            $row->departamento,
+            $row->semanas_cotizadas,
+            $row->afp,
             $row->error,
         ];
     }
