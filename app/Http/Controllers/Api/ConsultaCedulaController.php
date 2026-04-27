@@ -9,19 +9,20 @@ use Illuminate\Http\JsonResponse;
 class ConsultaCedulaController extends Controller
 {
     /**
-     * Retorna la información más reciente de un afiliado por cédula.
+     * Retorna el historial completo de consultas de un afiliado por cédula,
+     * ordenado del más reciente al más antiguo.
      *
      * GET /api/consulta/cedula/{cedula}
      */
     public function show(string $cedula): JsonResponse
     {
-        $resultado = ConsultaResult::where('cedula', $cedula)
+        $resultados = ConsultaResult::where('cedula', $cedula)
             ->whereNotNull('estado')
             ->where('error', null)
             ->latest('updated_at')
-            ->first();
+            ->get();
 
-        if (! $resultado) {
+        if ($resultados->isEmpty()) {
             return response()->json([
                 'success' => false,
                 'message' => 'No se encontraron resultados para la cédula proporcionada.',
@@ -29,54 +30,57 @@ class ConsultaCedulaController extends Controller
             ], 404);
         }
 
+        $data = $resultados->map(fn (ConsultaResult $r) => [
+            'cedula'              => $r->cedula,
+            'tipo_id'             => $r->tipo_id,
+            'primer_nombre'       => $r->primer_nombre,
+            'segundo_nombre'      => $r->segundo_nombre,
+            'primer_apellido'     => $r->primer_apellido,
+            'segundo_apellido'    => $r->segundo_apellido,
+            'nombre_completo'     => $r->nombre_completo,
+            'fecha_nacimiento'    => $r->fecha_nacimiento?->toDateString(),
+            'genero'              => $r->genero,
+            'parentesco'          => $r->parentesco,
+            'edad_anos'           => $r->edad_anos,
+            'edad_meses'          => $r->edad_meses,
+            'edad_dias'           => $r->edad_dias,
+            'rango_salarial'      => $r->rango_salarial,
+            'tipo_afiliado'       => $r->tipo_afiliado,
+            'plan'                => $r->plan,
+            'estado'              => $r->estado,
+            'derecho'             => $r->derecho,
+            'inicio_vigencia'     => $r->inicio_vigencia?->toDateString(),
+            'fin_vigencia'        => $r->fin_vigencia,
+            'ips_primaria'        => $r->ips_primaria,
+            'semanas_pos_sos'     => $r->semanas_pos_sos,
+            'semanas_pos_anterior' => $r->semanas_pos_anterior,
+            'semanas_pac_sos'     => $r->semanas_pac_sos,
+            'semanas_pac_anterior' => $r->semanas_pac_anterior,
+            'paga_cuota_moderadora' => $r->paga_cuota_moderadora,
+            'paga_copago'         => $r->paga_copago,
+            'empleador' => [
+                'tipo_id'       => $r->empleador_tipo_id,
+                'numero_id'     => $r->empleador_numero_id,
+                'razon_social'  => $r->empleador_razon_social,
+            ],
+            'informacion_adicional' => [
+                'estado_civil'       => $r->estado_civil,
+                'telefono'           => $r->telefono,
+                'direccion'          => $r->direccion,
+                'barrio'             => $r->barrio,
+                'ciudad_residencia'  => $r->ciudad_residencia,
+                'departamento'       => $r->departamento,
+                'semanas_cotizadas'  => $r->semanas_cotizadas,
+                'afp'                => $r->afp,
+            ],
+            'consultado_en' => $r->updated_at?->toIso8601String(),
+        ]);
+
         return response()->json([
             'success' => true,
             'message' => 'Consulta exitosa.',
-            'data'    => [
-                'cedula'              => $resultado->cedula,
-                'tipo_id'             => $resultado->tipo_id,
-                'primer_nombre'       => $resultado->primer_nombre,
-                'segundo_nombre'      => $resultado->segundo_nombre,
-                'primer_apellido'     => $resultado->primer_apellido,
-                'segundo_apellido'    => $resultado->segundo_apellido,
-                'nombre_completo'     => $resultado->nombre_completo,
-                'fecha_nacimiento'    => $resultado->fecha_nacimiento?->toDateString(),
-                'genero'              => $resultado->genero,
-                'parentesco'          => $resultado->parentesco,
-                'edad_anos'           => $resultado->edad_anos,
-                'edad_meses'          => $resultado->edad_meses,
-                'edad_dias'           => $resultado->edad_dias,
-                'rango_salarial'      => $resultado->rango_salarial,
-                'tipo_afiliado'       => $resultado->tipo_afiliado,
-                'plan'                => $resultado->plan,
-                'estado'              => $resultado->estado,
-                'derecho'             => $resultado->derecho,
-                'inicio_vigencia'     => $resultado->inicio_vigencia?->toDateString(),
-                'fin_vigencia'        => $resultado->fin_vigencia,
-                'ips_primaria'        => $resultado->ips_primaria,
-                'semanas_pos_sos'     => $resultado->semanas_pos_sos,
-                'semanas_pos_anterior' => $resultado->semanas_pos_anterior,
-                'semanas_pac_sos'     => $resultado->semanas_pac_sos,
-                'semanas_pac_anterior' => $resultado->semanas_pac_anterior,
-                'paga_cuota_moderadora' => $resultado->paga_cuota_moderadora,
-                'paga_copago'         => $resultado->paga_copago,
-                'empleador' => [
-                    'tipo_id'       => $resultado->empleador_tipo_id,
-                    'numero_id'     => $resultado->empleador_numero_id,
-                    'razon_social'  => $resultado->empleador_razon_social,
-                ],
-                'informacion_adicional' => [
-                    'estado_civil'       => $resultado->estado_civil,
-                    'telefono'           => $resultado->telefono,
-                    'direccion'          => $resultado->direccion,
-                    'barrio'             => $resultado->barrio,
-                    'ciudad_residencia'  => $resultado->ciudad_residencia,
-                    'departamento'       => $resultado->departamento,
-                    'semanas_cotizadas'  => $resultado->semanas_cotizadas,
-                    'afp'                => $resultado->afp,
-                ],
-                'consultado_en' => $resultado->updated_at?->toIso8601String(),
-            ],
+            'total'   => $data->count(),
+            'data'    => $data,
         ]);
     }
 }
