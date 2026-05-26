@@ -501,6 +501,14 @@
             <a href="{{ route('consultas.files') }}" class="{{ request()->routeIs('consultas.files') ? 'active' : '' }}">Consultas</a>
             @if(auth()->user()->isAdmin())
                 <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'active' : '' }}">Usuarios</a>
+                <a href="{{ route('sos.credentials') }}" class="{{ request()->routeIs('sos.*') ? 'active' : '' }}" style="display:inline-flex;align-items:center;gap:6px;">
+                    Credenciales
+                    @if(session('sos_username'))
+                        <span style="width:8px;height:8px;border-radius:50%;background:#69f0ae;display:inline-block;" title="Credenciales activas"></span>
+                    @else
+                        <span style="width:8px;height:8px;border-radius:50%;background:#ff6b7a;display:inline-block;" title="Sin credenciales"></span>
+                    @endif
+                </a>
             @endif
         </div>
         <div class="navbar-user">

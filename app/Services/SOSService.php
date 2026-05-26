@@ -71,8 +71,8 @@ class SOSService
             $loginPostUrl = config('sos.base_url') . '/j_security_check';
 
             $postData = [
-                'j_username' => config('sos.username'),
-                'j_password' => config('sos.password'),
+                'j_username' => session('sos_username', config('sos.username')),
+                'j_password' => session('sos_password', config('sos.password')),
             ];
 
             Log::channel('sos')->info("SOS: POST login a {$loginPostUrl}", [

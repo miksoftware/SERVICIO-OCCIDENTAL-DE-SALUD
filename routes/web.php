@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ConsultaController;
+use App\Http\Controllers\SosCredentialController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -32,5 +33,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/users', [UserController::class, 'store'])->name('users.store');
         Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
         Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
+
+        // Credenciales SOS
+        Route::get('/sos/credentials', [SosCredentialController::class, 'index'])->name('sos.credentials');
+        Route::post('/sos/credentials/save', [SosCredentialController::class, 'save'])->name('sos.credentials.save');
+        Route::post('/sos/credentials/test', [SosCredentialController::class, 'test'])->name('sos.credentials.test');
+        Route::post('/sos/credentials/logout', [SosCredentialController::class, 'logout'])->name('sos.credentials.logout');
     });
 });
